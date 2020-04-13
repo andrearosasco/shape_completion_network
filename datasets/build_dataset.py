@@ -121,6 +121,82 @@ def build(dataset_type, path_to_data, dataset_seed,
 
     return dataset_folder + dataset_file
 
+def build_test_custom(path_to_data):
+    
+    # We don't need any of the other crap, we just need the root of the directory tree of the dataset
+    # dataset_root/model_name/pointclouds/*.pcd
+    
+    train_model_names = []
+    holdout_model_names = ['partial_pc']
+    patch_size = 40
+
+    dataset = {}
+    dataset["train_model_names"] = train_model_names
+    dataset["holdout_model_names"] = holdout_model_names
+    dataset["patch_size"] = patch_size
+
+    # No train view is include, only holdout views 
+
+    train_models_train_views = []
+    train_models_holdout_views = []
+    holdout_models_holdout_views = []
+
+    print("Starting building holdout models")
+
+    for model in holdout_model_names:
+        model_data = model + "/pointclouds"
+        data_directory = path_to_data + "/test_database/" + model_data
+        if os.path.exists(data_directory):
+            absolute_data_dir_path = os.path.abspath(data_directory)
+            for mfile in os.listdir(absolute_data_dir_path):
+                if "_pc.pcd" in mfile:
+                    
+                    from curvox import cloud_conversions, pc_vox_utils, binvox_conversions
+
+                    # here is where we check existence of x and y and if not existent we 
+                    # generate them starting from the _pc.pcd which is not voxelized
+
+                    x = mfile.replace("pc.pcd", "x.pcd")
+                    x = absolute_data_dir_path + "/" + x
+                    
+                    if not os.path.isfile(x):
+                        partial_pc_np = cloud_conversions.pcd_to_np(absolute_data_dir_path + "/" + mfile)
+                        partial_vox = pc_vox_utils.pc_to_binvox_for_shape_completion(
+                                    points=partial_pc_np[:, 0:3], patch_size=patch_size)
+                        partial_vox_pc = binvox_conversions.binvox_to_pcl(partial_vox)
+                        pcl.save(cloud_conversions.np_to_pcl(partial_vox_pc), x)
+
+                    y = mfile.replace("pc.pcd", "y.pcd")
+                    y = absolute_data_dir_path + "/" + y
+
+                    if not os.path.isfile(y):
+                        partial_pc_np = cloud_conversions.pcd_to_np(absolute_data_dir_path + "/" + mfile)
+                        partial_vox = pc_vox_utils.pc_to_binvox_for_shape_completion(
+                                    points=partial_pc_np[:, 0:3], patch_size=patch_size)
+                        partial_vox_pc = binvox_conversions.binvox_to_pcl(partial_vox)
+                        pcl.save(cloud_conversions.np_to_pcl(partial_vox_pc), y)
+
+                    # generate a fake model pose
+                    pose_filename = x.replace("x.pcd", "model_pose.npy")
+                    if not os.path.isfile(pose_filename):
+                        np.save(x.replace("x.pcd", "model_pose.npy"), np.eye(4))
+
+                    holdout_models_holdout_views.append((x,y))
+        else:
+            print("Folder containing train and test data for " + model +
+                  " does not exist")
+
+    dataset['train_models_train_views'] = train_models_train_views
+    dataset['train_models_holdout_views'] = train_models_holdout_views
+    dataset['holdout_models_holdout_views'] = holdout_models_holdout_views
+    dataset_folder = os.getcwd() + "/build_datasets/"
+    dataset_file = "test_dataset.yaml"
+    file_utils.create_file(dataset_folder, dataset_file)
+    with open(dataset_folder + dataset_file, "w") as outfile:
+        yaml.dump(dataset, outfile, default_flow_style=True)
+
+    return dataset_folder + dataset_file
+
 
 def verify_example(x_filepath, y_filepath, patch_size):
 
@@ -207,11 +283,11 @@ if __name__ == "__main__":
     parser.add_argument(
         '--dataset-type',
         type=str,
-        choices=["train_test", "debug"],
+        choices=["train_test", "debug", "test"],
         default="train_test",
         nargs='?',
         help=
-        'What type of dataset you want to create. The debug dataset is just a much smaller version of the train dataset that is quicker to load and should be used for debugging the network'
+        'What type of dataset you want to create. The debug dataset is just a much smaller version of the train dataset that is quicker to load and should be used for debugging the network. Test is supposed to be inference only (no ground truth)'
     )
     parser.add_argument('--path-to-dataset',
                         type=str,
@@ -235,11 +311,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("BUILDING DATASET " + args.dataset_type)
-    dataset_file = build(args.dataset_type, args.path_to_dataset,
-                         args.dataset_seed, args.use_default_split)
-    print("VERIFYING DATASET " + args.dataset_type)
-    Success, problems = verify(dataset_file)
-    if Success:
-        print("DATASET BUILD AND VERIFIED")
+    
+    if args.dataset_type != "test":
+        dataset_file = build(args.dataset_type, args.path_to_dataset,
+                            args.dataset_seed, args.use_default_split)
+        print("VERIFYING DATASET " + args.dataset_type)
+        Success, problems = verify(dataset_file)
+        if Success:
+            print("DATASET BUILD AND VERIFIED")
+        else:
+            print(problems)
     else:
-        print(problems)
+        # Hacking the original script here
+        dataset_file = build_test_custom(args.path_to_dataset)
+        print("DATASET BUILD AND VERIFIED")
