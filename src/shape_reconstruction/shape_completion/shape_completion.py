@@ -59,7 +59,8 @@ def test_model(args):
     network_utils.setup_env(args.use_cuda)
     model = network_utils.setup_network(args)
     network_utils.load_parameters(model, args.net_recover_name,
-                                  args.network_model)
+                                  args.network_model, 
+                                  hardware = 'gpu' if args.use_cuda else 'cpu')
     model.eval()
     model.apply(network_utils.activate_dropout)
     # When loading a dataset for testing we need to process the data one at a time

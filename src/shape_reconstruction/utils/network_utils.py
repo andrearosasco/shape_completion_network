@@ -192,7 +192,8 @@ def save_network(model, args, folder, delimiter=""):
         tc.save(model.state_dict(), file_name)
 
 
-def load_parameters(network, weight_file, network_model, hardware="gpu"):
+def load_parameters(network, weight_file, network_model, hardware="cpu"):
+
     if network_model.lower() == "varley":
         pass
     else:
