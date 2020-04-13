@@ -197,7 +197,9 @@ def load_parameters(network, weight_file, network_model, hardware="cpu"):
     if network_model.lower() == "varley":
         pass
     else:
-        network.load_state_dict(tc.load(weight_file, map_location=hardware))
+        #network.load_state_dict(tc.load(weight_file, map_location=hardware))
+        network.load_state_dict(tc.load(weight_file, map_location=lambda storage, loc: storage))
+
     print("Successfully loaded network parameters from file " + weight_file)
 
 
