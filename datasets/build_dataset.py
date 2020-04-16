@@ -122,10 +122,10 @@ def build(dataset_type, path_to_data, dataset_seed,
     return dataset_folder + dataset_file
 
 def build_test_custom(path_to_data):
-    
+
     # We don't need any of the other crap, we just need the root of the directory tree of the dataset
     # dataset_root/model_name/pointclouds/*.pcd
-    
+
     train_model_names = []
     holdout_model_names = ['partial_pc']
     patch_size = 40
@@ -135,7 +135,7 @@ def build_test_custom(path_to_data):
     dataset["holdout_model_names"] = holdout_model_names
     dataset["patch_size"] = patch_size
 
-    # No train view is include, only holdout views 
+    # No train view is include, only holdout views
 
     train_models_train_views = []
     train_models_holdout_views = []
@@ -149,16 +149,16 @@ def build_test_custom(path_to_data):
         if os.path.exists(data_directory):
             absolute_data_dir_path = os.path.abspath(data_directory)
             for mfile in os.listdir(absolute_data_dir_path):
-                if "_pc.pcd" in mfile:
-                    
+                if ".pcd" in mfile:
+
                     from curvox import cloud_conversions, pc_vox_utils, binvox_conversions
 
-                    # here is where we check existence of x and y and if not existent we 
+                    # here is where we check existence of x and y and if not existent we
                     # generate them starting from the _pc.pcd which is not voxelized
 
                     x = mfile.replace("pc.pcd", "x.pcd")
                     x = absolute_data_dir_path + "/" + x
-                    
+
                     if not os.path.isfile(x):
                         partial_pc_np = cloud_conversions.pcd_to_np(absolute_data_dir_path + "/" + mfile)
                         partial_vox = pc_vox_utils.pc_to_binvox_for_shape_completion(
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("BUILDING DATASET " + args.dataset_type)
-    
+
     if args.dataset_type != "test":
         dataset_file = build(args.dataset_type, args.path_to_dataset,
                             args.dataset_seed, args.use_default_split)
