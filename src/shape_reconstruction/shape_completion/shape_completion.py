@@ -76,6 +76,9 @@ def test_model(args):
             loss, predictions = model.test(inputs,
                                            targets,
                                            num_samples=args.num_test_samples)
+
+            import ipdb; ipdb.set_trace()
+
             network_utils.save_test_output(predictions, object_name[0],
                                            observed_pc, object_pose, test_case,
                                            args.save_location,
@@ -85,3 +88,56 @@ def test_model(args):
 
             if idx == args.num_objects_to_test:
                 break
+
+def single_pc_test(args):
+
+    # For now, fix point cloud path JANK
+
+    #observed_pc_path = "/home/fbottarel/workspace/shape_completion_network/datasets/training_data/test_database/partial_pc/pointclouds/002_master_chef_can_pc.pcd"
+
+    # Create a numpy voxelized version of the cloud 
+
+    import os
+    from curvox import cloud_conversions, pc_vox_utils, binvox_conversions
+
+    patch_size = 40
+
+    observed_pc_path = args.point_cloud_file
+    if not os.path.isfile(observed_pc_path):
+        print("PC file does not exist")
+        return
+
+    observed_pc_np = cloud_conversions.pcd_to_np(observed_pc_path)
+
+    partial_vox = pc_vox_utils.pc_to_binvox_for_shape_completion(
+            points=observed_pc_np[:, 0:3], patch_size=40)
+    voxel_x = np.zeros((patch_size, patch_size, patch_size, 1),
+                        dtype=np.float32)
+    voxel_x[:, :, :, 0] = partial_vox.data
+    input_numpy = np.zeros((1,1,40,40,40), dtype=np.float32)
+    input_numpy[0,0,:,:,:] = voxel_x[:, :, :, 0]
+
+    network_utils.setup_env(args.use_cuda)
+    model = network_utils.setup_network(args)
+    network_utils.load_parameters(model, args.net_recover_name,
+                                  args.network_model, 
+                                  hardware = 'gpu' if args.use_cuda else 'cpu')
+    model.eval()
+    model.apply(network_utils.activate_dropout)
+    input_tensor = tc.from_numpy(input_numpy)
+    if args.use_cuda and tc.cuda.is_available():
+        input_tensor = input_tensor.cuda()
+    loss, predictions = model.test(input_tensor, 
+                         num_samples=args.num_test_samples)
+
+    object_name = os.path.splitext(os.path.basename(observed_pc_path))[0]
+    object_pose = np.eye(4)
+    test_case = "one_shot_pointcloud"
+
+    network_utils.save_test_output(predictions, object_name,
+                                           observed_pc_np, object_pose, test_case,
+                                           args.save_location,
+                                           args.network_model,
+                                           args.save_voxel_grid,
+                                           args.save_samples, args.save_mesh)
+ 

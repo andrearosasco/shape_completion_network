@@ -10,3 +10,6 @@ if __name__ == "__main__":
     elif args.mode == "test":
         print("Testing")
         shape_completion.test_model(args)
+    elif args.mode == "oneshot":
+        print("Testing single cloud " + args.point_cloud_file)
+        shape_completion.single_pc_test(args)
