@@ -113,6 +113,10 @@ def save_test_output(
         shape_completion_utils.save_voxel_grid(mean_voxel,
                                                object_name + "_mean_shape",
                                                voxel_folder)
+        binvox_folder = file_utils.create_folder(storage_folder + "/binvox/" +
+                                            test_case + "/" + object_name + 
+                                            "/")
+        save_binvox_input_output(observed_pc, mean_voxel, binvox_folder)
 
     if save_mesh:
         mesh_folder = file_utils.create_folder(storage_folder + "/meshes/" +
@@ -134,6 +138,25 @@ def save_test_output(
                     observed_pc, predictions[sample], mesh_folder,
                     sample_name + ".ply", object_pose)
 
+
+def save_binvox_input_output(
+    input_cloud,
+    mean_voxel,
+    binvox_folder
+):
+    
+    import binvox_rw
+    import curvox
+
+    cnn_voxel = shape_completion_utils.round_voxel_grid_to_0_and_1(mean_voxel)
+    partial_vox = curvox.pc_vox_utils.pc_to_binvox_for_shape_completion(
+        points=input_cloud[:, 0:3], patch_size=40)
+    completed_vox = binvox_rw.Voxels(cnn_voxel, partial_vox.dims,
+                                     partial_vox.translate, partial_vox.scale,
+                                     partial_vox.axis_order)
+    binvox_rw.write(partial_vox, open(binvox_folder + "network_input.binvox", 'w'))
+    binvox_rw.write(completed_vox, open(binvox_folder + "network_output.binvox", 'w'))
+ 
 
 def get_test_data(data, use_cuda):
     input = data[0].unsqueeze_(1).squeeze(-1)

@@ -37,7 +37,7 @@ def train_test_parser():
         help='Whether to add batch normalization to the networks')
     parser.add_argument('--mode',
                         type=str,
-                        choices=["train", "test"],
+                        choices=["train", "test", "oneshot"],
                         default="train",
                         nargs='?',
                         help='Whether we want to train or test a network')
@@ -158,6 +158,9 @@ def train_test_parser():
         help=
         'Indicate if we at test time want to save the shape completed voxel grids'
     )
+    parser.add_argument('--point-cloud-file',
+                        type=str,
+                        help='Point cloud to complete (use in conjunction with --mode oneshot')
     return parser
 
 
