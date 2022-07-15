@@ -16,9 +16,9 @@ import open3d as o3d
 
 
 def complete_pc(model, partial):
-    # center = get_bbox_center(partial)
-    # diameter = get_diameter(partial - center)
-    # partial = (partial - center) / diameter
+    center = get_bbox_center(partial)
+    diameter = get_diameter(partial - center)
+    partial = (partial - center) / diameter
 
     # partial_vox = partial
     partial_vox = voxelize_pc(torch.tensor(partial).unsqueeze(0), 40).squeeze()
@@ -36,7 +36,7 @@ def complete_pc(model, partial):
         input_tensor = input_tensor.cuda()
     # start = time.perf_counter()
     loss, predictions = model.test(input_tensor,
-                                   num_samples=10)
+                                   num_samples=20)
     # model.sample_
     # print(time.perf_counter() - start)
 
@@ -127,38 +127,17 @@ if __name__ == "__main__":
                                   args.network_model,
                                   hardware='gpu' if args.use_cuda else 'cpu')
 
-    root = '../../../pcr/data/MCD'
-    np.load()
+    partial = np.load('assets/partial_bleach_317.npy')
 
-    jaccard = MeanMetric()
+    out = complete_pc(model, partial)
 
+    o3d.visualization.draw([
+        PointCloud(points=Vector3dVector(out["partial"])).paint_uniform_color([0, 1, 0]),
+        PointCloud(points=Vector3dVector(out["complete"])).paint_uniform_color([0, 0, 1])],
+        )
+    # o3d.visualization.draw([PointCloud(points=Vector3dVector(partial2)).paint_uniform_color([0, 1, 0]),
+    #     PointCloud(points=Vector3dVector(ground_truth2)).paint_uniform_color([0, 0, 1]), TriangleMesh.create_coordinate_frame(origin=[40, 00, 40], size=40.),
+    #                         TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=40.)
+    # ])
 
-    for i, data in tqdm.tqdm(enumerate(ds)):
-        if i == 50:
-            break
-
-        partial, ground_truth, partial2, ground_truth2 = data
-
-        gt_grid2 = torch.zeros([40, 40, 40])
-        gt_grid2[ground_truth2[:, 0], ground_truth2[:, 1], ground_truth2[:, 2]] = 1
-
-        partial_grid2 = torch.zeros([40, 40, 40])
-        partial_grid2[partial2[:, 0], partial2[:, 1], partial2[:, 2]] = 1
-
-        out = complete_pc(model, partial)
-        grid1 = voxelize_pc2(torch.tensor(out['complete']).unsqueeze(0), 0.025)
-        grid2 = voxelize_pc2(torch.tensor(ground_truth).unsqueeze(0), 0.025)
-        jaccard(torch.sum(grid1 * grid2, dim=[1, 2, 3]) / torch.sum((grid1 + grid2) != 0, dim=[1, 2, 3]))
-        #
-        # o3d.visualization.draw([
-        #     PointCloud(points=Vector3dVector(out["partial"])).paint_uniform_color([0, 1, 0]),
-        #     PointCloud(points=Vector3dVector(out["complete"])).paint_uniform_color([0, 0, 1]),
-        #     PointCloud(points=Vector3dVector(ground_truth)).paint_uniform_color([1, 0, 0])],
-        #     )
-        # o3d.visualization.draw([PointCloud(points=Vector3dVector(partial2)).paint_uniform_color([0, 1, 0]),
-        #     PointCloud(points=Vector3dVector(ground_truth2)).paint_uniform_color([0, 0, 1]), TriangleMesh.create_coordinate_frame(origin=[40, 00, 40], size=40.),
-        #                         TriangleMesh.create_coordinate_frame(origin=[0, 0, 0], size=40.)
-        # ])
-
-    print(jaccard.compute())
 
