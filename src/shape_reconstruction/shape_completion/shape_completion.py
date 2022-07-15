@@ -1,7 +1,14 @@
+import mcubes
 import numpy as np
+import torch
 import torch as tc
+import open3d as o3d
 
-from shape_reconstruction.utils import network_utils, shape_completion_utils, file_utils
+# from src.shape_reconstruction.utils import network_utils, shape_completion_utils, file_utils
+from open3d.cpu.pybind.geometry import PointCloud, TriangleMesh
+from open3d.cpu.pybind.utility import Vector3dVector, Vector3iVector
+
+from src.shape_reconstruction.utils import network_utils
 
 
 def train_model(args):
@@ -89,6 +96,29 @@ def test_model(args):
             if idx == args.num_objects_to_test:
                 break
 
+def voxelize_pc(pc, side=40):
+    voxel_size = 1 / side
+
+    ref_idxs = ((pc + 0.5) / voxel_size).long()
+    ref_grid = torch.zeros([pc.shape[0], side, side, side], dtype=torch.bool, device=pc.device)
+
+    ref_idxs = ref_idxs.clip(min=0, max=ref_grid.shape[1] - 1)
+    ref_grid[
+        torch.arange(pc.shape[0]).reshape(-1, 1), ref_idxs[..., 0], ref_idxs[..., 1], ref_idxs[..., 2]] = True
+
+    return ref_grid
+
+def get_bbox_center(pc):
+    center = pc.min(0) + (pc.max(0) - pc.min(0)) / 2.0
+    return center
+
+
+def get_diameter(pc):
+    diameter = pc.max(0) - pc.min(0)
+    return np.max(diameter)
+
+
+
 def single_pc_test(args):
 
     # For now, fix point cloud path JANK
@@ -98,7 +128,7 @@ def single_pc_test(args):
     # Create a numpy voxelized version of the cloud 
 
     import os
-    from curvox import cloud_conversions, pc_vox_utils, binvox_conversions
+    # from curvox import pc_vox_utils, binvox_conversions
 
     patch_size = 40
 
@@ -107,13 +137,17 @@ def single_pc_test(args):
         print("PC file does not exist")
         return
 
-    observed_pc_np = cloud_conversions.pcd_to_np(observed_pc_path)
+    observed_pc_np = np.load(observed_pc_path)
 
-    partial_vox = pc_vox_utils.pc_to_binvox_for_shape_completion(
-            points=observed_pc_np[:, 0:3], patch_size=40)
+    center = get_bbox_center(observed_pc_np)
+    diameter = get_diameter(observed_pc_np - center)
+    observed_pc_np = (observed_pc_np - center) / diameter
+
+    partial_vox = voxelize_pc(torch.tensor(observed_pc_np).unsqueeze(0), 40).squeeze()
+
     voxel_x = np.zeros((patch_size, patch_size, patch_size, 1),
                         dtype=np.float32)
-    voxel_x[:, :, :, 0] = partial_vox.data
+    voxel_x[:, :, :, 0] = partial_vox
     input_numpy = np.zeros((1,1,40,40,40), dtype=np.float32)
     input_numpy[0,0,:,:,:] = voxel_x[:, :, :, 0]
 
@@ -130,14 +164,25 @@ def single_pc_test(args):
     loss, predictions = model.test(input_tensor, 
                          num_samples=args.num_test_samples)
 
-    object_name = os.path.splitext(os.path.basename(observed_pc_path))[0]
-    object_pose = np.eye(4)
-    test_case = "one_shot_pointcloud"
+    # Transform voxel into mesh
+    predictions = predictions.mean(axis=0)
+    predictions = (torch.tensor(predictions) > 0.5).nonzero() / 40
+    predictions = predictions - 0.5
 
-    network_utils.save_test_output(predictions, object_name,
-                                           observed_pc_np, object_pose, test_case,
-                                           args.save_location,
-                                           args.network_model,
-                                           args.save_voxel_grid,
-                                           args.save_samples, args.save_mesh)
+    v, t = mcubes.marching_cubes(predictions, 0.5)
+    mesh = TriangleMesh(vertices=Vector3dVector(v / 40 - 0.5), triangles=Vector3iVector(t))
+
+    # Get point cluod from reconstucted mesh
+    complete = mesh.sample_points_uniformly(number_of_points=8192*2)
+
+    # Visualize
+    pc = PointCloud(points=Vector3dVector(reconstruction.cpu().numpy()))
+    o3d.visualization.draw([mesh,
+                            sampled_pc,
+                            pc.paint_uniform_color([1, 0, 0]),
+                            PointCloud(points=Vector3dVector(observed_pc_np)).paint_uniform_color([0, 1, 0])])
+    # o3d.visualization.draw([mesh])
+
+
+
  

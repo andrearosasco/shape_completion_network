@@ -7,43 +7,18 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-import dataloader as data_loader
-from shape_reconstruction.shape_completion import (mc_dropout_network,
-                                                   stein_network,
-                                                   varley_network)
-from shape_reconstruction.utils import file_utils, shape_completion_utils
+# import dataloader as data_loader
+from src.shape_reconstruction.shape_completion import (mc_dropout_network,)
 
 
 def setup_network(args):
 
-    if args.network_model.lower() == "stein":
-        stein_encoder = stein_network.SteinEncoder(
-            args.latent_dim,
-            use_skip_connections=args.use_skip_connections,
-            drop_rate=args.dropout_rate,
-            use_batch_norm=args.use_batch_norm)
-        stein_decoder = stein_network.SteinDecoder(
-            args.latent_dim, use_skip_connections=args.use_skip_connections)
-        stein_encoder.apply(init_weights)
-        stein_decoder.apply(init_weights)
-
-        model = stein_network.SteinVariationalEncoderDecoder(
-            stein_encoder,
-            stein_decoder,
-            num_particles=args.num_particles,
-            reg=args.regularization)
-
-    elif args.network_model.lower() == "mc_dropout":
-        encoder_decoder = mc_dropout_network.EncoderDecoder(
-            args.latent_dim,
-            drop_rate=args.dropout_rate,
-            use_batch_norm=args.use_batch_norm)
-        encoder_decoder.apply(init_weights)
-        model = mc_dropout_network.MCDropoutEncoderDecoder(encoder_decoder)
-
-    elif args.network_model.lower() == "varley":
-        MainModel = imp.load_source('MainModel', "nets/varley.py")
-        model = tc.load(args.net_recover_name)
+    encoder_decoder = mc_dropout_network.EncoderDecoder(
+        args.latent_dim,
+        drop_rate=args.dropout_rate,
+        use_batch_norm=args.use_batch_norm)
+    encoder_decoder.apply(init_weights)
+    model = mc_dropout_network.MCDropoutEncoderDecoder(encoder_decoder)
 
     if args.use_cuda:
         model.set_device("cuda")
@@ -55,108 +30,40 @@ def setup_network(args):
 
     return model
 
-
-def load_dataset(batch_size, num_cuda_workers, mode, debug=False, seed=100):
-    # dataloader.dataset.set_model("train_models_train_views")
-    datafile = ""
-    if debug:
-        datafile = "datasets/debug_Dataset.yaml"
-    elif mode == "train":
-        datafile = "datasets/full_Dataset.yaml"
-    elif mode == "test":
-        datafile = "datasets/full_test_Dataset.yaml"
-    else:
-        raise ValueError("No known dataset for " + mode + " mode")
-
-    dataset = ""
-    if mode == "train":
-        shuffle = True
-        dataset = data_loader.trainDataSet(datafile)
-        sampler = None
-    elif mode == "test":
-        shuffle = False
-        dataset = data_loader.testDataSet(datafile)
-        sampler = data_loader.deterRandomSampler(dataset, seed)
-
-    dataloader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            shuffle=shuffle,
-                            num_workers=num_cuda_workers,
-                            pin_memory=True,
-                            sampler=sampler)
-    return dataloader
-
-
-def save_test_output(
-        predictions,
-        object_name,
-        observed_pc,
-        object_pose,
-        test_case,
-        storage_folder,
-        network_model,
-        save_voxel_grid=True,
-        save_samples=False,
-        save_mesh=False,
-):
-
-    if network_model.lower() != "varley":
-        mean_voxel = shape_completion_utils.calculate_mean_voxel_of_samples(
-            predictions)
-    else:
-        mean_voxel = predictions
-
-    if save_voxel_grid:
-        voxel_folder = file_utils.create_folder(storage_folder + "/voxels/" +
-                                                test_case + "/" + object_name +
-                                                "/")
-        shape_completion_utils.save_voxel_grid(mean_voxel,
-                                               object_name + "_mean_shape",
-                                               voxel_folder)
-        binvox_folder = file_utils.create_folder(storage_folder + "/binvox/" +
-                                            test_case + "/" + object_name + 
-                                            "/")
-        save_binvox_input_output(observed_pc, mean_voxel, binvox_folder)
-
-    if save_mesh:
-        mesh_folder = file_utils.create_folder(storage_folder + "/meshes/" +
-                                               test_case + "/" + object_name +
-                                               "/")
-        shape_completion_utils.cnn_and_pc_to_mesh(
-            observed_pc, mean_voxel, mesh_folder,
-            object_name + "_mean_shape.ply", object_pose)
-    if save_samples and network_model.lower() != "varley":
-        predictions = predictions
-        for sample in range(predictions.shape[0]):
-            sample_name = object_name + "_sample_" + str(sample)
-            if save_voxel_grid:
-                shape_completion_utils.save_voxel_grid(predictions[sample],
-                                                       sample_name,
-                                                       voxel_folder)
-            if save_mesh:
-                shape_completion_utils.cnn_and_pc_to_mesh(
-                    observed_pc, predictions[sample], mesh_folder,
-                    sample_name + ".ply", object_pose)
+#
+# def load_dataset(batch_size, num_cuda_workers, mode, debug=False, seed=100):
+#     # dataloader.dataset.set_model("train_models_train_views")
+#     datafile = ""
+#     if debug:
+#         datafile = "datasets/debug_Dataset.yaml"
+#     elif mode == "train":
+#         datafile = "datasets/full_Dataset.yaml"
+#     elif mode == "test":
+#         datafile = "datasets/full_test_Dataset.yaml"
+#     else:
+#         raise ValueError("No known dataset for " + mode + " mode")
+#
+#     dataset = ""
+#     if mode == "train":
+#         shuffle = True
+#         dataset = data_loader.trainDataSet(datafile)
+#         sampler = None
+#     elif mode == "test":
+#         shuffle = False
+#         dataset = data_loader.testDataSet(datafile)
+#         sampler = data_loader.deterRandomSampler(dataset, seed)
+#
+#     dataloader = DataLoader(dataset,
+#                             batch_size=batch_size,
+#                             shuffle=shuffle,
+#                             num_workers=num_cuda_workers,
+#                             pin_memory=True,
+#                             sampler=sampler)
+#     return dataloader
 
 
-def save_binvox_input_output(
-    input_cloud,
-    mean_voxel,
-    binvox_folder
-):
-    
-    import binvox_rw
-    import curvox
 
-    cnn_voxel = shape_completion_utils.round_voxel_grid_to_0_and_1(mean_voxel)
-    partial_vox = curvox.pc_vox_utils.pc_to_binvox_for_shape_completion(
-        points=input_cloud[:, 0:3], patch_size=40)
-    completed_vox = binvox_rw.Voxels(cnn_voxel, partial_vox.dims,
-                                     partial_vox.translate, partial_vox.scale,
-                                     partial_vox.axis_order)
-    binvox_rw.write(partial_vox, open(binvox_folder + "network_input.binvox", 'w'))
-    binvox_rw.write(completed_vox, open(binvox_folder + "network_output.binvox", 'w'))
- 
+
 
 def get_test_data(data, use_cuda):
     input = data[0].unsqueeze_(1).squeeze(-1)
@@ -199,21 +106,6 @@ def setup_env(use_cuda):
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 
 
-def save_network(model, args, folder, delimiter=""):
-    file_utils.create_folder(folder)
-    if args.network_model.lower() == "stein":
-        file_name = "./" + folder + "/svgd_particles_" + str(
-            args.num_particles) + "_dropout_rate_" + str(
-                args.dropout_rate) + "_reg_" + str(
-                    args.regularization) + "_lat_" + str(
-                        args.latent_dim) + delimiter + ".model"
-        tc.save(model.state_dict(), file_name)
-    elif args.network_model.lower() == "mc_dropout":
-        file_name = "./" + folder + "/mc_dropout_dropout_rate_" + str(
-            args.dropout_rate) + "_lat_" + str(
-                args.latent_dim) + delimiter + ".model"
-        tc.save(model.state_dict(), file_name)
-
 
 def load_parameters(network, weight_file, network_model, hardware="cpu"):
 
@@ -254,15 +146,15 @@ def init_weights(m):
         nn.init.kaiming_normal_(m.weight, mode='fan_in')
 
 
-def to_variable(tensor, use_cuda=True, use_volatile=False, use_asynch=False):
-    if use_cuda and tc.cuda.is_available():
-        if use_volatile:
-            with tc.no_grad():
-                return Variable(tensor.cuda(async=use_asynch))
-        else:
-            return Variable(tensor.cuda(async=use_asynch))
-    else:
-        return Variable(tensor)
+# def to_variable(tensor, use_cuda=True, use_volatile=False, use_asynch=False):
+#     if use_cuda and tc.cuda.is_available():
+#         if use_volatile:
+#             with tc.no_grad():
+#                 return Variable(tensor.cuda(async=use_asynch))
+#         else:
+#             return Variable(tensor.cuda(async=use_asynch))
+#     else:
+#         return Variable(tensor)
 
 
 def to_cuda(net, use_cuda=True):
